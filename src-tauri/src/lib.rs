@@ -3,7 +3,7 @@ mod projects;
 mod scanner;
 mod settings;
 
-use generate::{create_audio_preview, estimate_pack_size, generate_pack};
+use generate::{create_audio_preview, estimate_pack_size, generate_marathon, generate_pack};
 use projects::{delete_project, list_projects, load_project, save_project};
 use scanner::scan_songs_folder;
 use settings::{load_settings, save_settings};
@@ -17,6 +17,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_songs_folder,
             generate_pack,
+            generate_marathon,
             estimate_pack_size,
             create_audio_preview,
             load_settings,

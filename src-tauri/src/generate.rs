@@ -110,6 +110,39 @@ pub struct PreviewItem {
     pub ffmpeg_path: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarathonItem {
+    pub folder_path: String,
+    pub osu_path: String,
+    pub artist: String,
+    pub title: String,
+    pub creator: String,
+    pub difficulty: String,
+    #[serde(default = "one")]
+    pub rate: f64,
+    #[serde(default)]
+    pub pitch: f64,
+    pub background_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarathonRequest {
+    pub pack_name: String,
+    pub artist: String,
+    pub author: String,
+    pub version: String,
+    pub symbol: String,
+    pub output_folder: String,
+    pub ffmpeg_path: Option<String>,
+    pub items: Vec<MarathonItem>,
+    #[serde(default)]
+    pub breaks: Vec<f64>,
+}
+
+fn one() -> f64 { 1.0 }
+
 fn safe_name(input: &str) -> String {
     let value: String = input
         .chars()
@@ -476,7 +509,7 @@ fn transform_audio(
 ) -> Result<(), String> {
     let pitch_rate = 2f64.powf(pitch / 12.);
     let filter = format!(
-        "aresample=48000,asetrate=48000*{pitch_rate:.10},aresample=48000,{}",
+        "aresample=48000,asetrate=48000*{pitch_rate:.10},aresample=48000,{},asetpts=PTS-STARTPTS",
         atempo_chain(rate / pitch_rate)
     );
     let mut command = Command::new(exe);
@@ -754,6 +787,160 @@ pub fn generate_pack(request: GenerateRequest) -> Result<GenerateReport, String>
         warnings: vec![],
     })
 }
+
+fn transform_marathon_audio(exe: &str, input: &Path, output: &Path, rate: f64, pitch: f64, duration_ms: f64) -> Result<(), String> {
+    let pitch_rate = 2f64.powf(pitch / 12.);
+    let filter = format!(
+        "aresample=48000,asetrate=48000*{pitch_rate:.10},aresample=48000,{},asetpts=PTS-STARTPTS",
+        atempo_chain(rate / pitch_rate)
+    );
+    let mut command = Command::new(exe);
+    command.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(input).args([
+        "-t", &(duration_ms.max(1.) / 1000.).to_string(), "-vn", "-filter:a", &filter,
+        "-c:a", "libvorbis", "-q:a", "8", "-avoid_negative_ts", "make_zero",
+    ]).arg(output);
+    command_error(run_hidden(&mut command).map_err(|e| format!("Cannot start FFmpeg ({exe}): {e}"))?, "Marathon audio conversion")
+}
+
+fn section_text(text: &str, wanted: &str) -> Vec<String> {
+    let mut section = String::new();
+    text.lines().filter_map(|line| {
+        let trimmed = line.trim_start_matches('\u{feff}').trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') { section = trimmed.to_string(); return None; }
+        if section == wanted && !trimmed.is_empty() && !trimmed.starts_with("//") { Some(trimmed.to_string()) } else { None }
+    }).collect()
+}
+
+fn map_end_ms(text: &str) -> f64 {
+    section_text(text, "[HitObjects]").iter().filter_map(|line| {
+        let fields: Vec<&str> = line.split(',').collect();
+        let start = fields.get(2).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.);
+        let end = fields.get(5).and_then(|v| v.split(':').next()).and_then(|v| v.parse::<f64>().ok()).unwrap_or(start);
+        Some(start.max(end))
+    }).fold(0., f64::max) + 1000.
+}
+
+fn shifted_section(text: &str, wanted: &str, offset: f64) -> Vec<String> {
+    section_text(text, wanted).into_iter().map(|line| {
+        let mut fields: Vec<String> = line.split(',').map(str::to_owned).collect();
+        let time_index = if wanted == "[HitObjects]" { 2 } else { 0 };
+        if let Some(value) = fields.get_mut(time_index) {
+            if let Ok(time) = value.parse::<f64>() {
+                let adjusted = time + offset;
+                *value = format!("{:.0}", if wanted == "[HitObjects]" { adjusted.max(0.) } else { adjusted });
+            }
+        }
+        line.split_once(',').map(|_| fields.join(",")).unwrap_or(line)
+    }).collect()
+}
+
+fn marathon_audio(exe: &str, clips: &[PathBuf], breaks: &[f64], output: &Path) -> Result<(), String> {
+    if clips.is_empty() { return Err("Marathon has no audio clips.".into()); }
+    let mut command = Command::new(exe);
+    command.args(["-hide_banner", "-loglevel", "error", "-y"]);
+    for clip in clips { command.args(["-i"]).arg(clip); }
+    let mut graph = String::new();
+    let mut count = clips.len();
+    for (index, seconds) in breaks.iter().enumerate().take(clips.len().saturating_sub(1)) {
+        let safe = seconds.max(0.0);
+        command.args(["-f", "lavfi", "-i", &format!("anullsrc=channel_layout=stereo:sample_rate=48000:d={safe}")]);
+        let silence_index = clips.len() + index;
+        graph.push_str(&format!("[{silence_index}:a]aresample=48000[s{index}];"));
+        count += 1;
+    }
+    for index in 0..clips.len() {
+        graph.push_str(&format!("[{index}:a]aresample=48000,asetpts=PTS-STARTPTS[a{index}];"));
+    }
+    let mut inputs = String::new();
+    for index in 0..clips.len() {
+        inputs.push_str(&format!("[a{index}]"));
+        if index < clips.len() - 1 { inputs.push_str(&format!("[s{index}]")); }
+    }
+    graph.push_str(&format!("{inputs}concat=n={count}:v=0:a=1[out]"));
+    command.args(["-filter_complex", &graph, "-map", "[out]", "-c:a", "libvorbis", "-q:a", "5"]).arg(output);
+    command_error(run_hidden(&mut command).map_err(|e| format!("Cannot start FFmpeg: {e}"))?, "Marathon audio")
+}
+
+fn marathon_background(exe: &str, images: &[PathBuf], symbol: &str, output: &Path, _work: &Path) -> Result<(), String> {
+    if images.is_empty() {
+        let mut fallback = Command::new(exe);
+        fallback.args(["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x101018:s=1920x1080:d=1", "-frames:v", "1"]).arg(output);
+        return command_error(run_hidden(&mut fallback).map_err(|e| format!("Cannot start FFmpeg: {e}"))?, "Marathon background");
+    }
+    let mut command = Command::new(exe);
+    command.args(["-hide_banner", "-loglevel", "error", "-y"]);
+    for image in images.iter().take(4) { command.args(["-i"]).arg(image); }
+    let n = images.len().min(4);
+    let layout = match n { 1 => "0_0", 2 => "0_0|w0_0", _ => "0_0|w0_0|0_h0|w0_h0" };
+    let mut graph = String::new();
+    for i in 0..n { graph.push_str(&format!("[{i}:v]scale=960:540:flags=lanczos:force_original_aspect_ratio=increase,crop=960:540[v{i}];")); }
+    let tiles = (0..n).map(|i| format!("[v{i}]")).collect::<String>();
+    if n == 1 { graph.push_str("[v0]scale=1920:1080[base];"); }
+    else { graph.push_str(&format!("{tiles}xstack=inputs={n}:layout={layout}:fill=black[base];")); }
+    let escaped = symbol.replace('\\', "\\\\").replace(':', "\\:").replace('\'', "\\'");
+    graph.push_str(&format!("color=c=0x63d8ff:s=320x320,format=rgba,geq=r='99':g='216':b='255':a='if(lte((X-160)*(X-160)+(Y-160)*(Y-160),160*160),255,0)'[outer];color=c=black@0.94:s=294x294,format=rgba,geq=r='0':g='0':b='0':a='if(lte((X-147)*(X-147)+(Y-147)*(Y-147),147*147),240,0)'[inner];[outer][inner]overlay=13:13,drawtext=text='{escaped}':x=(w-text_w)/2:y=(h-text_h)/2:fontcolor=white:fontsize=120:borderw=2:bordercolor=0x63d8ff[badge];[base][badge]overlay=(W-w)/2:(H-h)/2[out]"));
+    command.args(["-filter_complex", &graph, "-map", "[out]", "-frames:v", "1"]).arg(output);
+    command_error(run_hidden(&mut command).map_err(|e| format!("Cannot start FFmpeg: {e}"))?, "Marathon background")
+}
+
+#[tauri::command]
+pub fn generate_marathon(request: MarathonRequest) -> Result<GenerateReport, String> {
+    if request.items.is_empty() { return Err("Add at least one map to the marathon.".into()); }
+    let parent = PathBuf::from(&request.output_folder);
+    if !parent.is_dir() { return Err("Output folder does not exist.".into()); }
+    let work = TempDir::new().map_err(|e| e.to_string())?;
+    let exe = ffmpeg(request.ffmpeg_path.as_deref());
+    let mut clips = Vec::new();
+    let mut raws = Vec::new();
+    let mut backgrounds = Vec::new();
+    let mut offsets = Vec::new();
+    let mut offset = 0.0;
+    let mut warnings = Vec::new();
+    for (index, item) in request.items.iter().enumerate() {
+        let raw = fs::read_to_string(&item.osu_path).map_err(|e| format!("Cannot read map: {e}"))?;
+        let folder = Path::new(&item.folder_path);
+        let source = resolve_asset(folder, audio_name(&raw)).ok_or_else(|| format!("Audio not found for {}", item.difficulty))?;
+        let clip = work.path().join(format!("clip-{index}.ogg"));
+        let gameplay_duration = map_end_ms(&raw) / item.rate.max(0.1);
+        transform_marathon_audio(&exe, &source, &clip, item.rate, item.pitch, gameplay_duration)?;
+        clips.push(clip);
+        raws.push(raw.clone());
+        offsets.push(offset);
+        offset += gameplay_duration;
+        if index < request.items.len() - 1 { offset += request.breaks.get(index).copied().unwrap_or(0.).max(0.) * 1000.; }
+        let selected_bg = item.background_path.as_ref().map(PathBuf::from).filter(|p| p.is_file()).or_else(|| resolve_asset(folder, bg_name(&raw)));
+        if let Some(bg) = selected_bg.filter(|p| p.extension().and_then(|x| x.to_str()).is_none_or(|x| !x.eq_ignore_ascii_case("svg"))) { backgrounds.push(bg); }
+    }
+    let audio_name_out = "marathon.ogg";
+    marathon_audio(&exe, &clips, &request.breaks, &work.path().join(audio_name_out))?;
+    let bg_name_out = "marathon-bg.png";
+    if !backgrounds.is_empty() { marathon_background(&exe, &backgrounds, &request.symbol, &work.path().join(bg_name_out), work.path())?; } else { warnings.push("No background was found; using the map default.".into()); }
+    let merged = raws[0].clone();
+    let mut lines = Vec::new();
+    let mut section = String::new();
+    for raw in merged.lines() {
+        let t = raw.trim_start_matches('\u{feff}');
+        if t == "[HitObjects]" || t == "[TimingPoints]" { break; }
+        if section == "[General]" && t.starts_with("AudioFilename:") { lines.push(format!("AudioFilename: {audio_name_out}")); continue; }
+        if section == "[Events]" && (t.starts_with("0,0,") || t.to_ascii_lowercase().starts_with("background")) { continue; }
+        if t.starts_with('[') && t.ends_with(']') { section = t.to_string(); }
+        if section == "[Metadata]" && t.starts_with("Title:") { lines.push(format!("Title: {}", request.pack_name)); continue; }
+        if section == "[Metadata]" && t.starts_with("Artist:") { lines.push(format!("Artist: {}", request.artist)); continue; }
+        if section == "[Metadata]" && t.starts_with("Creator:") { lines.push(format!("Creator: {}", request.author)); continue; }
+        if section == "[Metadata]" && t.starts_with("Version:") { lines.push(format!("Version: {}", request.version)); continue; }
+        lines.push(t.to_string());
+    }
+    lines.push("0,0,marathon-bg.jpg".into());
+    lines.push("".into()); lines.push("[TimingPoints]".into());
+    for (raw, shift) in raws.iter().zip(offsets.iter()) { lines.extend(shifted_section(raw, "[TimingPoints]", *shift - 1000.)); }
+    lines.push("".into()); lines.push("[HitObjects]".into());
+    for (raw, shift) in raws.iter().zip(offsets.iter()) { lines.extend(shifted_section(raw, "[HitObjects]", *shift - 1000.)); }
+    let osu_name = format!("{} - {} [{}].osu", safe_name(&request.artist), safe_name(&request.pack_name), safe_name(&request.version));
+    fs::write(work.path().join(&osu_name), lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+    let output = unique_file(&parent, &format!("{}.osz", safe_name(&request.pack_name)));
+    zip_dir(work.path(), &output)?;
+    Ok(GenerateReport { output_path: output.to_string_lossy().into_owned(), mapsets: 1, difficulties: 1, warnings })
+}
 #[tauri::command]
 pub fn estimate_pack_size(items: Vec<SizeItem>) -> u64 {
     items
@@ -803,7 +990,7 @@ pub fn create_audio_preview(item: PreviewItem) -> Result<String, String> {
     let output = path.join(format!("{}.ogg", Uuid::new_v4()));
     let pitch_rate = 2f64.powf(pitch / 12.);
     let filter = format!(
-        "aresample=48000,asetrate=48000*{pitch_rate:.10},aresample=48000,{}",
+        "aresample=48000,asetrate=48000*{pitch_rate:.10},aresample=48000,{},asetpts=PTS-STARTPTS",
         atempo_chain(item.rate / pitch_rate)
     );
     let mut command = Command::new(ffmpeg(item.ffmpeg_path.as_deref()));

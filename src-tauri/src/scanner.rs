@@ -67,14 +67,20 @@ fn parse_osu(path: &Path) -> Result<ParsedOsu, String> {
                 }
             }
             "[Metadata]" => {
-                if line.starts_with("TitleUnicode:") && parsed.title.is_empty() {
-                    parsed.title = value(line).unwrap_or("").to_owned();
+                if line.starts_with("TitleUnicode:") {
+                    let unicode_title = value(line).unwrap_or("").trim();
+                    if !unicode_title.is_empty() {
+                        parsed.title = unicode_title.to_owned();
+                    }
                 }
                 if line.starts_with("Title:") && parsed.title.is_empty() {
                     parsed.title = value(line).unwrap_or("").to_owned();
                 }
-                if line.starts_with("ArtistUnicode:") && parsed.artist.is_empty() {
-                    parsed.artist = value(line).unwrap_or("").to_owned();
+                if line.starts_with("ArtistUnicode:") {
+                    let unicode_artist = value(line).unwrap_or("").trim();
+                    if !unicode_artist.is_empty() {
+                        parsed.artist = unicode_artist.to_owned();
+                    }
                 }
                 if line.starts_with("Artist:") && parsed.artist.is_empty() {
                     parsed.artist = value(line).unwrap_or("").to_owned();
@@ -108,8 +114,17 @@ fn stable_id(path: &Path) -> String {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, path.to_string_lossy().as_bytes()).to_string()
 }
 
-#[tauri::command]
-pub fn scan_songs_folder(path: String) -> Result<Vec<BeatmapSet>, String> {
+fn usable_background(folder: &Path, name: Option<&String>) -> Option<PathBuf> {
+    let requested = name.map(|value| folder.join(value)).filter(|path| path.is_file());
+    if requested.as_ref().is_some_and(|path| path.extension().and_then(|x| x.to_str()).is_some_and(|x| !x.eq_ignore_ascii_case("svg"))) {
+        return requested;
+    }
+    WalkDir::new(folder).max_depth(1).into_iter().filter_map(Result::ok).map(|entry| entry.into_path()).find(|path| {
+        path.is_file() && path.extension().and_then(|x| x.to_str()).is_some_and(|x| matches!(x.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "png" | "webp" | "bmp"))
+    }).or(requested)
+}
+
+fn scan_songs_folder_inner(path: String) -> Result<Vec<BeatmapSet>, String> {
     let root = PathBuf::from(&path);
     if !root.is_dir() {
         return Err("Wybrana ścieżka nie jest folderem.".into());
@@ -147,25 +162,21 @@ pub fn scan_songs_folder(path: String) -> Result<Vec<BeatmapSet>, String> {
         let mut background = None;
         for file in files {
             if let Ok(p) = parse_osu(&file) {
+                // Pack Studio creates osu!mania packs. Ignoring other modes makes
+                // scans substantially smaller in large Songs folders and prevents
+                // irrelevant maps from reaching the UI.
+                if p.mode != 3 {
+                    continue;
+                }
                 if artist.is_empty() {
                     artist = p.artist.clone();
                     title = p.title.clone();
                     creator = p.creator.clone();
                 }
                 if background.is_none() {
-                    background = p
-                        .background
-                        .as_ref()
-                        .map(|x| folder.join(x))
-                        .filter(|x| x.is_file())
-                        .map(|x| x.to_string_lossy().into_owned());
+                    background = usable_background(&folder, p.background.as_ref()).map(|x| x.to_string_lossy().into_owned());
                 }
-                let difficulty_background = p
-                    .background
-                    .as_ref()
-                    .map(|x| folder.join(x))
-                    .filter(|x| x.is_file())
-                    .map(|x| x.to_string_lossy().into_owned());
+                let difficulty_background = usable_background(&folder, p.background.as_ref()).map(|x| x.to_string_lossy().into_owned());
                 difficulties.push(Difficulty {
                     id: stable_id(&file),
                     version: p.version,
@@ -217,4 +228,46 @@ pub fn scan_songs_folder(path: String) -> Result<Vec<BeatmapSet>, String> {
             .then(a.title.to_lowercase().cmp(&b.title.to_lowercase()))
     });
     Ok(sets)
+}
+
+#[tauri::command]
+pub async fn scan_songs_folder(path: String) -> Result<Vec<BeatmapSet>, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_songs_folder_inner(path))
+        .await
+        .map_err(|error| format!("Skanowanie zostało przerwane: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prefers_non_empty_unicode_metadata() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        fs::write(
+            file.path(),
+            "[General]\nMode:3\n[Metadata]\nArtist:Artist\nArtistUnicode:Artysta\nTitle:Title\nTitleUnicode:Tytuł\nCreator:Mapper\nVersion:Hard",
+        )
+        .unwrap();
+
+        let parsed = parse_osu(file.path()).unwrap();
+
+        assert_eq!(parsed.artist, "Artysta");
+        assert_eq!(parsed.title, "Tytuł");
+    }
+
+    #[test]
+    fn keeps_regular_metadata_when_unicode_fields_are_empty() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        fs::write(
+            file.path(),
+            "[Metadata]\nArtist:Artist\nArtistUnicode:  \nTitle:Title\nTitleUnicode:\nCreator:Mapper\nVersion:Hard",
+        )
+        .unwrap();
+
+        let parsed = parse_osu(file.path()).unwrap();
+
+        assert_eq!(parsed.artist, "Artist");
+        assert_eq!(parsed.title, "Title");
+    }
 }

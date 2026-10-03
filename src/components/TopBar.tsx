@@ -1,4 +1,5 @@
 import { BarChart3, FolderOpen, Images, Package, RefreshCw, Save, Settings2 } from "lucide-react";
+import logo from "../assets/pack-studio-logo.png";
 
 export type AppView = "pack" | "analyzer" | "backgrounds" | "projects";
 
@@ -17,7 +18,7 @@ type Props = {
 export function TopBar({ path, count, scanning, onPick, onScan, onSettings, view, onViewChange, language }: Props) {
   const pl=language==="pl";
   return <header className="topbar">
-    <div className="brand"><span className="brand-mark">ps</span><div><strong>Pack Studio</strong><small>beatmap collection builder</small></div></div>
+    <div className="brand"><img className="brand-logo" src={logo} alt="Pack Studio"/><div><strong>Pack Studio</strong><small>beatmap collection builder</small></div></div>
     <nav className="view-tabs"><button className={view === "pack" ? "active" : ""} onClick={() => onViewChange("pack")}><Package/>Pack Studio</button><button className={view === "backgrounds" ? "active" : ""} onClick={() => onViewChange("backgrounds")}><Images/>Backgrounds</button><button className={view === "projects" ? "active" : ""} onClick={() => onViewChange("projects")}><Save/>Projects</button><button className={view === "analyzer" ? "active" : ""} onClick={() => onViewChange("analyzer")}><BarChart3/>Dan Creator</button></nav>
     <div className="folder-box">
       <div className="folder-copy"><small>{pl?"Folder map":"Maps folder"}</small><span title={path}>{path || (pl?"Wybierz folder Songs osu!":"Choose osu! Songs folder")}</span></div>

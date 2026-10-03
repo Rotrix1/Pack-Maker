@@ -20,6 +20,14 @@ export async function generatePack(settings:Settings,items:PackItem[]):Promise<G
   if (!isTauri()) throw new Error("Pack generation is available in the Tauri desktop app.");
   return invoke("generate_pack",{request:{packName:settings.packName,author:settings.author,outputFolder:settings.outputFolder,ffmpegPath:settings.ffmpegPath||null,items:items.map(item=>({setId:item.set.id,folderPath:item.set.folderPath,artist:item.set.artist,title:item.set.title,creator:item.set.creator,osuPath:item.difficulty.osuPath,difficulty:item.difficulty.version,rate:item.rate,pitch:item.pitch,trainer:item.trainer,customBackgroundPath:item.customBackgroundPath,backgroundPath:item.set.backgroundPath,backgroundEffects:item.backgroundEffects,overlays:item.overlays|| (item.backgroundOverlayPath?[{id:"legacy",path:item.backgroundOverlayPath,opacity:.8,scale:.3,x:.5,y:.5}]:[]) }))}});
 }
+export async function generateMarathon(settings: Settings, input: { packName: string; artist: string; author: string; version: string; symbol: string; items: PackItem[]; breaks: number[] }): Promise<GenerateReport> {
+  if (!isTauri()) throw new Error("Marathon generation is available in the Tauri desktop app.");
+  return invoke("generate_marathon", { request: {
+    packName: input.packName, artist: input.artist, author: input.author, version: input.version, symbol: input.symbol,
+    outputFolder: settings.outputFolder, ffmpegPath: settings.ffmpegPath || null, breaks: input.breaks,
+    items: input.items.map(item => ({ folderPath: item.set.folderPath, osuPath: item.difficulty.osuPath, artist: item.set.artist, title: item.set.title, creator: item.set.creator, difficulty: item.difficulty.version, rate: item.rate, pitch: item.pitch, backgroundPath: item.difficulty.backgroundPath || item.set.backgroundPath || null }))
+  }});
+}
 export async function estimatePackSize(items:PackItem[]):Promise<number> {
   if (!isTauri()) return 0;
   return invoke("estimate_pack_size",{items:items.map(item=>({folderPath:item.set.folderPath,osuPath:item.difficulty.osuPath,customBackgroundPath:item.customBackgroundPath||null,overlays:item.overlays||[]}))});
