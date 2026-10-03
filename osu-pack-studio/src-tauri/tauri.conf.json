@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "osu! Pack Studio",
   "version": "1.0.0",
-  "identifier": "com.osupackstudio.app",
+  "identifier": "com.osupackstudio.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
       "title": "osu! Pack Studio",
       "width": 1440,
       "height": 900,
-      "minWidth": 1100,
+      "minWidth": 960,
       "minHeight": 680,
       "resizable": true,
       "center": true,
@@ -29,6 +29,7 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "resources": ["resources/ffmpeg.exe"],
     "shortDescription": "Create custom osu! beatmap packs",
     "longDescription": "Scan your local osu! library, select difficulties, apply rate and pitch variants and export importable .osz collections.",
     "category": "Utility"

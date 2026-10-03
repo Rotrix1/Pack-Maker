@@ -5,6 +5,8 @@ export interface Difficulty {
   mode: number;
   stars?: number;
   audioFilename?: string;
+  /** Background referenced by this exact .osu difficulty, when it differs within a set. */
+  backgroundPath?: string;
   hp?: number;
   cs?: number;
   ar?: number;
@@ -56,10 +58,15 @@ export interface BackgroundEffects {
   pixelate: number;
   sepia: number;
   invert: boolean;
-  overlayOpacity: number;
-  overlayScale: number;
-  overlayX: number;
-  overlayY: number;
+}
+
+export interface BackgroundOverlay {
+  id: string;
+  path: string;
+  opacity: number;
+  scale: number;
+  x: number;
+  y: number;
 }
 
 export interface BeatmapSet {
@@ -82,6 +89,8 @@ export interface PackItem {
   trainer?: TrainerConfig;
   customBackgroundPath?: string;
   backgroundEffects?: BackgroundEffects;
+  overlays?: BackgroundOverlay[];
+  /** Compatibility field for saves created before multi-layer overlays. */
   backgroundOverlayPath?: string;
 }
 

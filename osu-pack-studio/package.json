@@ -2,21 +2,19 @@
   "name": "osu-pack-studio",
   "private": true,
   "version": "1.0.0",
-  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "desktop:dev": "npm run build && electron .",
-    "desktop:build": "npm run build && electron-builder --win portable"
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
-    "archiver": "^7.0.1",
-    "ffmpeg-static": "^5.2.0",
+    "@tauri-apps/plugin-opener": "^2.7.0",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -26,23 +24,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^38.2.1",
-    "electron-builder": "^26.0.12",
     "typescript": "~5.6.2",
     "vite": "^6.0.5"
-  },
-  "build": {
-    "appId": "com.osupackstudio.app",
-    "productName": "osu! Pack Studio",
-    "asar": true,
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
-    "asarUnpack": ["node_modules/ffmpeg-static/**/*"],
-    "win": {
-      "target": [{ "target": "portable", "arch": ["x64"] }],
-      "icon": "src-tauri/icons/icon.ico",
-      "artifactName": "osu-Pack-Studio-${version}-portable.exe"
-    },
-    "portable": { "artifactName": "osu-Pack-Studio-${version}-portable.exe" }
   }
 }

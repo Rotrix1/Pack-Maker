@@ -1,6 +1,17 @@
+# JavaScript dependencies and Vite output
 node_modules/
 dist/
+*.log
+
+# Tauri/Rust generated output, bundles and installers
 src-tauri/target/
 src-tauri/gen/
-*.log
+release/
+
+# OS and editor metadata
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Keep src-tauri/resources/ffmpeg.exe tracked: it is the bundled FFmpeg runtime.
