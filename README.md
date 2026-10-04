@@ -4,14 +4,45 @@ osu! Pack Studio is a Tauri + Rust desktop app for creating osu!mania `.osz` pac
 
 ## Features
 
-- Scan local osu! beatmaps and choose full beatmapsets or individual difficulties.
-- Keep the current pack, trainer settings, rates, pitches, and projects between launches.
-- Create manual project saves and automatic saves after each `.osz` export.
-- Edit per-map backgrounds with effects, multiple draggable image overlays, scale, and opacity.
-- Apply a saved effects-and-overlays draft to every background in the pack after confirmation.
-- Generate audio previews and transformed audio locally with FFmpeg.
-- Remember the window size and position.
+### Pack Studio
+
+- Scan a local osu! `Songs` directory and browse osu!mania beatmapsets or individual difficulties.
+- Search by title, artist, mapper, pack name, and difficulty; select individual maps or full beatmapsets.
+- Build a pack with per-map rate and pitch settings, plus trainer-map settings.
+- Generate an importable `.osz` without modifying the original beatmaps.
 - Use the system Downloads folder as the default export location.
+- Keep the current selected maps, rates, pitches, and settings between launches.
+- Generate local audio previews and transformed audio through FFmpeg.
+
+### Backgrounds
+
+- Edit each selected map's background without changing the source beatmap.
+- Apply brightness, contrast, saturation, blur, hue, vignette, grain, sharpen, pixelation, sepia, inversion, and visual presets.
+- Add multiple image overlays with independent opacity, scale, position, and drag-to-move support.
+- Apply one confirmed effects-and-overlays draft to every background in the current pack.
+- Resolve the correct background for each difficulty, including beatmapsets that use multiple backgrounds.
+
+### Dan Creator
+
+- Combine up to four osu!mania difficulties into one marathon / Dan `.osz`.
+- Configure title, artist, creator, difficulty name, a central background symbol, breaks, and glitch preview strength.
+- Generate a collage background from the selected maps using the same background resolver as the final `.osz`.
+- Keep generation running when you switch to another app tab.
+- Preserve long-note timing while merging charts; use one BPM based on the highest source BPM and avoid source SV/timing-point data.
+- Optionally trim silent intro before each stage, with a 1.5-second fade-in ending at the first note.
+
+### Projects
+
+- Save named manual pack projects and browse them in one place.
+- Automatically save a project copy after each `.osz` export.
+- Load saved projects with their selected maps, rates, pitches, trainer configuration, and background edits.
+- Keep manual saves and autosaves as separate categories.
+
+### Application
+
+- Remember the window size and position.
+- Persist settings and project data in the application data directory.
+- Bundle FFmpeg on Windows, with configured-path and system-location fallbacks.
 
 ## Requirements
 
@@ -97,3 +128,5 @@ Tauri packages should normally be built on their target operating system: Window
 ## Creator
 
 Created by [Rotrix](https://osu.ppy.sh/users/31245051).
+
+Contributed by [Pofanek](https://osu.ppy.sh/users/18185878).

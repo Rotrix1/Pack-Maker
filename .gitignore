@@ -2,6 +2,16 @@
 node_modules/
 dist/
 *.log
+*.tsbuildinfo
+
+# Local environment files and tool caches
+.env
+.env.*
+!.env.example
+.vite/
+coverage/
+.tauri/
+*.rs.bk
 
 # Tauri/Rust generated output, bundles and installers
 src-tauri/target/
