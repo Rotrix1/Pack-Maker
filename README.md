@@ -2,6 +2,8 @@
 
 osu! Pack Studio is a Tauri + Rust desktop app for creating osu!mania `.osz` packs. It scans a local `Songs` directory, lets you select individual difficulties, change rate and pitch, edit backgrounds and image overlays, and export an importable pack.
 
+[osu! Pack Maker Website](https://www.osupackmaker.xyz/)
+
 ## Features
 
 ### Pack Studio
@@ -108,6 +110,48 @@ npm run tauri build -- --bundles appimage,deb
 ```
 
 Artifacts are written under `src-tauri/target/release/bundle/`.
+
+## Build for Arch Linux
+
+For Arch-based distributions (Arch, CachyOS, Manjaro, EndeavourOS), install the WebKitGTK, GTK, OpenSSL, Rust and Node.js dependencies first:
+
+```sh
+sudo pacman -S --needed base-devel git curl wget file openssl webkit2gtk-4.1 gtk3 libappindicator-gtk3 librsvg xdotool appmenu-gtk-module nodejs npm rustup ffmpeg
+rustup default stable
+```
+
+Then build an unpackaged executable:
+
+```sh
+npm install
+npm run tauri build -- --no-bundle
+```
+
+The executable is written to `src-tauri/target/release/osu-pack-studio`.
+
+On Wayland compositors such as Hyprland or Sway the window may be blank or glitchy. If that happens, run it with:
+
+```sh
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ./src-tauri/target/release/osu-pack-studio
+```
+
+To add it to your application launcher:
+
+```sh
+mkdir -p ~/.local/bin ~/.local/share/applications
+cp src-tauri/target/release/osu-pack-studio ~/.local/bin/
+
+cat > ~/.local/share/applications/osu-pack-studio.desktop << EOF
+[Desktop Entry]
+Name=osu! Pack Studio
+Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 $HOME/.local/bin/osu-pack-studio
+Type=Application
+Categories=Utility;Game;
+Terminal=false
+EOF
+```
+
+If the app runs fine without `WEBKIT_DISABLE_DMABUF_RENDERER=1`, remove it from the `Exec=` line.
 
 ## Build for macOS
 
