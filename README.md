@@ -2,6 +2,8 @@
 
 osu! Pack Studio is a Tauri + Rust desktop app for creating osu!mania `.osz` packs. It scans a local `Songs` directory, lets you select individual difficulties, change rate and pitch, edit backgrounds and image overlays, and export an importable pack.
 
+[osu! Pack Maker Website](https://www.osupackmaker.xyz/)
+
 ## Features
 
 ### Pack Studio
