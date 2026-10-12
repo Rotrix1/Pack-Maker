@@ -29,6 +29,7 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "icon": ["icons/icon.ico"],
     "resources": ["resources/ffmpeg.exe"],
     "shortDescription": "Create custom osu! beatmap packs",
     "longDescription": "Scan your local osu! library, select difficulties, apply rate and pitch variants and export importable .osz collections.",
