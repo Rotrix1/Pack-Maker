@@ -1,6 +1,6 @@
 [package]
 name = "osu-pack-studio"
-version = "1.0.0"
+version = "1.0.1"
 description = "Desktop beatmap pack builder for osu!"
 authors = ["osu! Pack Studio"]
 edition = "2021"
@@ -23,4 +23,3 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tempfile = "3"
 tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
-

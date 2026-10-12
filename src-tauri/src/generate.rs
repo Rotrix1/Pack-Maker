@@ -660,6 +660,37 @@ fn has_effects(e: &Effects) -> bool {
         || e.sepia.unwrap_or(0.) > 0.
         || e.invert.unwrap_or(false)
 }
+
+/// Some beatmap archives contain a JPEG that was given a `.png` filename (or
+/// vice versa). FFmpeg chooses an image decoder from the filename before it
+/// reads the contents, so use the file signature whenever it identifies a
+/// common image format.
+fn image_input_format(path: &Path) -> Option<&'static str> {
+    let mut signature = [0_u8; 12];
+    let bytes_read = fs::File::open(path)
+        .ok()?
+        .read(&mut signature)
+        .ok()?;
+    let signature = &signature[..bytes_read];
+
+    if signature.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("mjpeg")
+    } else if signature.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png_pipe")
+    } else if signature.starts_with(b"GIF87a") || signature.starts_with(b"GIF89a") {
+        Some("gif")
+    } else if signature.starts_with(b"BM") {
+        Some("bmp_pipe")
+    } else if signature.len() >= 12
+        && signature.starts_with(b"RIFF")
+        && &signature[8..12] == b"WEBP"
+    {
+        Some("webp_pipe")
+    } else {
+        None
+    }
+}
+
 fn transform_background(
     exe: &str,
     input: &Path,
@@ -672,9 +703,11 @@ fn transform_background(
         "-loglevel".into(),
         "error".into(),
         "-y".into(),
-        "-i".into(),
-        input.to_string_lossy().into_owned(),
     ];
+    if let Some(format) = image_input_format(input) {
+        args.extend(["-f".into(), format.into()]);
+    }
+    args.extend(["-i".into(), input.to_string_lossy().into_owned()]);
     for overlay in overlays {
         args.push("-i".into());
         args.push(overlay.path.clone())
@@ -1548,6 +1581,18 @@ mod tests {
     #[test]
     fn tempo() {
         assert_eq!(atempo_chain(4.), "atempo=2,atempo=2.00000000")
+    }
+
+    #[test]
+    fn background_format_uses_the_file_signature_not_the_extension() {
+        let temp = tempfile::tempdir().unwrap();
+        let mislabeled_jpeg = temp.path().join("background.png");
+        fs::write(&mislabeled_jpeg, [0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0]).unwrap();
+        assert_eq!(image_input_format(&mislabeled_jpeg), Some("mjpeg"));
+
+        let png = temp.path().join("background.jpg");
+        fs::write(&png, b"\x89PNG\r\n\x1a\nrest").unwrap();
+        assert_eq!(image_input_format(&png), Some("png_pipe"));
     }
 
     #[test]
